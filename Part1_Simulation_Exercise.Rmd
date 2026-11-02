@@ -1,0 +1,183 @@
+---
+title: "The Exponential Distribution and the Central Limit Theorem: A Simulation Exercise"
+author: "Simon Malone"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+fontsize: 10pt
+geometry: margin=0.8in
+output:
+        pdf_document:
+                fig_caption: true
+        html_document:
+                toc: false
+                fig_caption: true
+---
+
+```{r setup, include=FALSE}
+# echo = FALSE keeps the code out of the main report; all code is listed in the Appendix
+knitr::opts_chunk$set(echo = FALSE, fig.align = "center", fig.width = 7, fig.height = 3, 
+        out.width = "100%")
+```
+
+## Overview
+
+This report investigates the distribution of the **average of 40 exponential random variables** and compares it with what the Central Limit Theorem (CLT) predicts. I simulate 1,000 such averages with rate parameter $\lambda = 0.2$ and compare (1) their centre with the theoretical mean, (2) their variability with the theoretical variance, and (3) their shape with a normal distribution. I also contrast them with a large collection of *individual* exponentials, which are clearly not normal.
+
+## Simulations
+
+For an exponential distribution with rate $\lambda$, the theoretical mean is $\mu = 1/\lambda$ and the standard deviation is also $1/\lambda$. With $\lambda = 0.2$ these are both 5, so the variance of a single exponential is 25. For the mean of $n = 40$ independent draws, theory gives
+
+$$E[\bar X] = \mu = 5, \qquad \mathrm{Var}[\bar X] = \frac{\sigma^2}{n} = \frac{25}{40} = 0.625, \qquad SD[\bar X] = \frac{\sigma}{\sqrt n} \approx 0.791 .$$
+
+The code (see the Appendix) sets a seed (for reproducibility), draws a 1,000 x 40 matrix of exponentials (each row is one experiment of 40 draws), and takes the mean of each row. It also draws 1,000 individual exponentials, used later for comparison, and stores the theoretical quantities.
+
+```{r simulate, include=FALSE}
+set.seed(5643)
+
+lambda <- 0.2   # rate parameter
+n      <- 40    # exponentials averaged in each experiment
+nsim   <- 1000  # number of experiments
+
+# each row = one experiment of 40 exponentials; avg = the 1,000 sample means
+sim <- matrix(rexp(nsim * n, rate = lambda), nrow = nsim, ncol = n)
+avg <- rowMeans(sim)
+
+# a large collection of individual (un-averaged) exponentials
+raw <- rexp(nsim, rate = lambda)
+
+# theoretical values
+mu         <- 1 / lambda                # mean of one exponential
+sigma2     <- 1 / lambda^2              # variance of one exponential
+var_theory <- sigma2 / n                # variance of the mean of 40
+sd_theory  <- sqrt(var_theory)          # standard deviation of the mean of 40
+```
+
+## Sample Mean versus Theoretical Mean
+
+```{r mean-fig, fig.width=7.5, fig.height=2.8, fig.cap="Figure 1. Distribution of 1,000 averages of 40 exponentials (lambda = 0.2). The solid red line is the sample mean of the averages; the dashed black line is the theoretical mean 1/lambda = 5. The two are almost indistinguishable."}
+par(cex = 0.66, mar = c(4, 4, 3, 1), cex.main = 0.9, cex.lab = 0.9)
+hist(avg, breaks = 30, col = "lightsteelblue", border = "white",
+        main = "Means of 40 Exponentials (1,000 simulations)",
+        xlab = "Mean of 40 exponentials")
+abline(v = mean(avg), col = "firebrick", lwd = 3)
+abline(v = mu, col = "black", lwd = 3, lty = 2)
+legend("topright", bty = "n", cex = 0.7, lwd = 3, lty = c(1, 2), col = c("firebrick", "black"),
+        legend = c(paste("Sample mean =", round(mean(avg), 3)),
+        paste("Theoretical mean =", mu)))
+par(cex = 1, cex.main = 1.2, cex.lab = 1, mar = c(5.1, 4.1, 4.1, 2.1))
+```
+
+The average of the 1,000 simulated means is **`r round(mean(avg), 3)`**, against a theoretical mean of **`r mu`** (a difference of `r round(mean(avg) - mu, 3)`). This is what we expect: the sample mean is an unbiased estimator of $\mu$, so the distribution of averages is centred on the same value as the underlying exponential distribution. The small remaining gap is simulation noise; the standard error of the mean of 1,000 averages is about $0.791/\sqrt{1000} \approx 0.025$.
+
+## Sample Variance versus Theoretical Variance
+
+```{r var-calc}
+var_table <- data.frame(
+        Quantity    = c("One exponential", "Mean of 40 exponentials"),
+        Theoretical = c(sigma2, var_theory),
+        Simulated   = c(var(raw), var(avg))
+)
+knitr::kable(var_table, digits = 3, caption = "Table 1. Theoretical versus simulated variances.")
+```
+
+```{r var-fig, fig.width=7.5, fig.height=2.8, fig.cap="Figure 2. Left: the spread of the 1,000 averages, with +/- 1 standard deviation shown for the simulated data (red) and for theory (black, sqrt(0.625)). Right: the variance of the first k simulated averages settles onto the theoretical value 0.625 as k grows."}
+par(mfrow = c(1, 2), cex = 0.66, mar = c(4, 4, 3, 1), cex.main = 0.9, cex.lab = 0.9)
+
+# Left: histogram with +/- 1 SD bars
+h <- hist(avg, breaks = 30, plot = FALSE)
+hist(avg, breaks = 30, freq = FALSE, col = "lightsteelblue", border = "white",
+        main = "Spread of the means", xlab = "Mean of 40 exponentials")
+ytop <- max(h$density)
+arrows(mu - sd_theory,  0.85 * ytop, mu + sd_theory,  0.85 * ytop,
+        code = 3, angle = 90, length = 0.05, lwd = 3, col = "black")
+arrows(mean(avg) - sd(avg), 0.70 * ytop, mean(avg) + sd(avg), 0.70 * ytop,
+        code = 3, angle = 90, length = 0.05, lwd = 3, col = "firebrick")
+legend("topright", bty = "n", cex = 0.7, lwd = 3, col = c("black", "firebrick"),
+        legend = c(paste("Theory: SD =", round(sd_theory, 3)),
+        paste("Sample: SD =", round(sd(avg), 3))))
+
+# Right: running variance of the averages
+running_var <- sapply(2:nsim, function(k) var(avg[1:k]))
+plot(2:nsim, running_var, type = "l", col = "firebrick", lwd = 2,
+        xlab = "Number of simulated averages (k)", ylab = "Variance of the first k averages",
+        main = "Convergence of the variance")
+abline(h = var_theory, lty = 2, lwd = 3)
+legend("topright", bty = "n", cex = 0.7, lwd = c(2, 3), lty = c(1, 2),
+        col = c("firebrick", "black"),
+        legend = c(paste("Sample:", round(var(avg), 3)),
+        paste("Theory:", var_theory)))
+par(mfrow = c(1, 1))
+```
+
+The variance of the 1,000 simulated averages is **`r round(var(avg), 3)`**, compared with the theoretical value $\sigma^2/n = 25/40 =$ **`r var_theory`** (standard deviations `r round(sd(avg), 3)` versus `r round(sd_theory, 3)`). The running variance in Figure 2 fluctuates early on and then converges to the theoretical value.
+
+Table 1 also shows why averaging matters. A single exponential has variance 25 (SD = 5), whereas the mean of 40 has variance 0.625, i.e. **40 times smaller**, because $\mathrm{Var}[\bar X] = \sigma^2/n$. Averaging cancels out much of the individual-draw noise, so the averages cluster tightly around 5.
+
+## Distribution
+
+The CLT says that the distribution of a mean of many independent, identically distributed variables is approximately normal, *even though the underlying variable is not*. Figure 3 makes this explicit by contrasting the two collections.
+
+```{r dist-fig, fig.width=7.5, fig.height=2.8, fig.cap="Figure 3. Left: 1,000 individual exponentials are strongly right-skewed and follow the exponential density (red), nothing like a bell curve. Middle: 1,000 averages of 40 exponentials are bell-shaped; the blue curve is the simulated density and the red curve is the theoretical normal N(5, 0.791). Right: a normal Q-Q plot of the averages lies almost on the straight line."}
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1), cex.main = 0.9, cex.lab = 0.9)
+
+# Left: individual exponentials
+hist(raw, breaks = 30, freq = FALSE, col = "grey85", border = "white",
+        main = "1,000 individual exponentials", xlab = "Value")
+curve(dexp(x, rate = lambda), add = TRUE, col = "firebrick", lwd = 2)
+
+# Middle: averages with normal overlay
+hist(avg, breaks = 30, freq = FALSE, col = "lightsteelblue", border = "white",
+        main = "1,000 means of 40 exponentials", xlab = "Mean of 40")
+lines(density(avg), col = "blue", lwd = 2)
+curve(dnorm(x, mean = mu, sd = sd_theory), add = TRUE, col = "firebrick", lwd = 2, lty = 2)
+legend("topright", bty = "n", cex = 0.7, lwd = 2, lty = c(1, 2), col = c("blue", "firebrick"),
+        legend = c("Simulated density", "N(5, 0.791)"))
+
+# Right: Q-Q plot
+qqnorm(avg, main = "Normal Q-Q plot of the means", pch = 16, col = rgb(0, 0, 0, 0.4))
+qqline(avg, col = "firebrick", lwd = 2)
+
+par(mfrow = c(1, 1))
+```
+
+* **Individual exponentials** (left) pile up near zero with a long right tail. Their sample skewness is about `r round(mean((raw - mean(raw))^3) / sd(raw)^3, 2)` (theory: 2). The distribution is nowhere near normal.
+* **Averages of 40** (middle) form a symmetric bell shape centred at 5. The simulated density closely follows the theoretical normal curve with mean 5 and standard deviation 0.791. Their skewness is only about `r round(mean((avg - mean(avg))^3) / sd(avg)^3, 2)` (theory: $2/\sqrt{40} \approx 0.32$), much closer to the normal value of 0.
+* The **Q-Q plot** (right) shows the sample quantiles lying close to the line expected for a normal distribution, with small deviations only in the extreme upper tail, where some residual right-skew remains at $n = 40$.
+
+As a further check, a normal distribution puts about 95% of its mass within 1.96 standard deviations of the mean. In the simulation, **`r round(100 * mean(abs(avg - mu) < 1.96 * sd_theory), 1)`%** of the averages fall in $5 \pm 1.96 \times 0.791$, essentially the 95% a normal distribution would give.
+
+Finally, we can ask how well a 95% confidence interval built from each experiment (using that experiment's own sample standard deviation) captures the true mean of 5:
+
+```{r coverage, include=FALSE}
+s_each   <- apply(sim, 1, sd)
+lower    <- avg - 1.96 * s_each / sqrt(n)
+upper    <- avg + 1.96 * s_each / sqrt(n)
+coverage <- mean(lower < mu & mu < upper)
+coverage
+```
+
+The coverage is **`r round(coverage, 3)`**. This is close to, but typically a little below, the nominal 0.95. This is expected: with $n = 40$ the normal approximation is good but not perfect for a skewed distribution like the exponential, and estimating $\sigma$ from the data adds extra variability. A larger $n$ would bring the coverage closer to 0.95.
+
+## Conclusion
+
+The simulated distribution of the mean of 40 exponentials with $\lambda = 0.2$ is centred at about `r round(mean(avg), 2)` (theory: 5), has variance about `r round(var(avg), 3)` (theory: 0.625), and is approximately normal, in sharp contrast to the skewed distribution of individual exponentials. All three findings agree with the Central Limit Theorem.
+
+\newpage
+
+## Appendix A: Supporting Output
+
+Numerical output behind the figures and tables above.
+
+```{r appendix-output, echo=TRUE, size="footnotesize"}
+c(sample_mean = mean(avg), theoretical_mean = mu)
+c(sample_var = var(avg), theoretical_var = var_theory)
+c(sample_sd = sd(avg), theoretical_sd = sd_theory)
+quantile(avg, c(0.025, 0.5, 0.975))     # spread of the 1,000 averages
+coverage                                # coverage of the 95% confidence intervals
+```
+
+## Appendix B: R Code
+
+Complete code used to produce this report.
+
+```{r code-listing, ref.label=c("setup", "simulate", "mean-fig", "var-calc", "var-fig", "dist-fig", "coverage"), echo=TRUE, eval=FALSE, size="scriptsize"}
+```
